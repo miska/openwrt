@@ -69,6 +69,38 @@ section_enabled() {
 	[ $enable -gt 0 ] || [ $enabled -gt 0 ]
 }
 
+openvpn_get_dev() {
+	local dev
+	local dev_type
+	local name="$1"
+	local conf="$2"
+
+	# Do override only for configurations with config_file
+	config_get config_file "$s" config
+	[ -n "$config_file" ] || return
+
+	# Check there is someething to override
+	config_get dev "$name" dev
+	config_get dev_type "$name" dev_type
+	[ -n "$dev" ] || return
+
+	# If there is a no dev_type, try to guess it
+	if [ -z "$dev_type" ]; then
+		if grep -q '^[[:blank:]]*dev-type[[:blank:]]*tun' "$conf" || \
+		   grep -q '^[[:blank:]]*dev[[:blank:]]*tun' "$conf"; then
+			dev_type="tun"
+		elif grep -q '^[[:blank:]]*dev-type[[:blank:]]*tap' "$conf" || \
+		     grep -q '^[[:blank:]]*dev[[:blank:]]*tap' "$conf"; then
+			dev_type="tap"
+		else
+			return
+		fi
+	fi
+
+	# Return overrides
+	echo "--dev-type $dev_type --dev $dev"
+}
+
 openvpn_add_instance() {
 	local name="$1"
 	local dir="$2"
@@ -83,7 +115,8 @@ openvpn_add_instance() {
 		--config "$conf" \
 		--up "/usr/libexec/openvpn-hotplug up $name" \
 		--down "/usr/libexec/openvpn-hotplug down $name" \
-		--script-security "${security:-2}"
+		--script-security "${security:-2}" \
+		$(openvpn_get_dev "$name" "$conf")
 	procd_set_param file "$dir/$conf"
 	procd_set_param term_timeout 15
 	procd_set_param respawn
